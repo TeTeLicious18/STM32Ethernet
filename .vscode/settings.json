@@ -1,0 +1,10 @@
+{
+    "stm32-for-vscode.openOCDPath": false,
+    "stm32-for-vscode.makePath": "C:\\Program Files (x86)\\GnuWin32\\bin\\make.EXE",
+    "makefile.configureOnOpen": false,
+    "files.associations": {
+        "stdio.h": "c",
+        "stm32f1xx_hal_gpio.h": "c"
+    },
+    "C_Cpp.errorSquiggles": "disabled"
+}

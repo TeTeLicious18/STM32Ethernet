@@ -1,0 +1,20 @@
+{
+	"env": {
+		"myIncludePath": ["${workspaceFolder}/Drivers/STM32F1xx_HAL_Driver/Inc", "${workspaceFolder}/Core/Inc"]
+	},
+	"configurations": [
+		{
+			"name": "Win32",
+			"includePath": [
+				"${myIncludePath}", "${workspaceFolder}/**"
+			],
+			"defines": [
+				"_DEBUG",
+				"UNICODE",
+				"_UNICODE"
+			]
+		}
+	],
+	"version": 4
+}
+	
