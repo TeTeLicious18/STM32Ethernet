@@ -245,86 +245,78 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim2)
 
 /* USER CODE BEGIN 0 */
 
-
-
 void run_cable_test() {
-    uint8_t wire_map[8] = {0};
+    uint8_t wire_connections[8][8] = {0}; // Connection matrix
     uint16_t pa_pins[8] = {GPIO_PIN_1, GPIO_PIN_2, GPIO_PIN_3, GPIO_PIN_4,
                           GPIO_PIN_5, GPIO_PIN_6, GPIO_PIN_7, GPIO_PIN_8};
     uint16_t pb_pins[8] = {GPIO_PIN_8, GPIO_PIN_9, GPIO_PIN_10, GPIO_PIN_11,
                           GPIO_PIN_12, GPIO_PIN_13, GPIO_PIN_14, GPIO_PIN_15};
-
-    // Test all wire connections
-    for(uint8_t i = 0; i < 8; i++) {
-        HAL_GPIO_WritePin(GPIOA, pa_pins[i], GPIO_PIN_SET);
-        HAL_Delay(2);
-        wire_map[i] = HAL_GPIO_ReadPin(GPIOB, pb_pins[i]) ? 1 : 0;
-        HAL_GPIO_WritePin(GPIOA, pa_pins[i], GPIO_PIN_RESET);
-        printf("PA%d->PB%d: %s\n", i+1, 8+i, wire_map[i] ? "OK" : "FAIL");
-    }
-
-    // Check for faults first
-    uint8_t fault_count = 0;
-    for(uint8_t i = 0; i < 8; i++) {
-        if(!wire_map[i]) fault_count++;
-    }
-
-    CableType type = CABLE_FAULTY;
     
-    // Only check cable types if no faults
-    if(fault_count == 0) {
-        // Check for straight cable (1-1, 2-2...8-8)
-        uint8_t is_straight = 1;
-        for(uint8_t i = 0; i < 8; i++) {
-            if(!wire_map[i]) {
-                is_straight = 0;
-                break;
-            }
+    // Test all connections
+    for (uint8_t pa_idx = 0; pa_idx < 8; pa_idx++) {
+        HAL_GPIO_WritePin(GPIOA, pa_pins[pa_idx], GPIO_PIN_SET);
+        HAL_Delay(5);
+        for (uint8_t pb_idx = 0; pb_idx < 8; pb_idx++) {
+            wire_connections[pa_idx][pb_idx] = 
+                HAL_GPIO_ReadPin(GPIOB, pb_pins[pb_idx]) ? 1 : 0;
         }
-        
-        if(is_straight) {
-            type = CABLE_STRAIGHT;
-        }
-        else {
-            // Check for T568B crossover pattern
-            // PA1->PB10 (wire 1->3), PA2->PB13 (wire 2->6)
-            // PA3->PB8 (wire 3->1), PA6->PB11 (wire 6->2)
-            if(wire_map[0] &&   // PA1->PB8 (should be 0 for crossover)
-               wire_map[1] &&   // PA2->PB9 (should be 0 for crossover)
-               !wire_map[2] &&  // PA3->PB10 (should be 1 for crossover)
-               !wire_map[5]) {  // PA6->PB13 (should be 1 for crossover)
-                // Detailed check for actual crossover pairs
-                if(HAL_GPIO_ReadPin(GPIOB, GPIO_PIN_10) &&  // PB10 (crossover pin 3)
-                   HAL_GPIO_ReadPin(GPIOB, GPIO_PIN_13) &&  // PB13 (crossover pin 6)
-                   HAL_GPIO_ReadPin(GPIOB, GPIO_PIN_8) &&   // PB8 (crossover pin 1)
-                   HAL_GPIO_ReadPin(GPIOB, GPIO_PIN_11)) {  // PB11 (crossover pin 4)
-                    type = CABLE_CROSSOVER;
-                }
-            }
+        HAL_GPIO_WritePin(GPIOA, pa_pins[pa_idx], GPIO_PIN_RESET);
+    }
+    
+    // Count total connections
+    uint8_t total_connections = 0;
+    for (uint8_t i = 0; i < 8; i++) {
+        for (uint8_t j = 0; j < 8; j++) {
+            total_connections += wire_connections[i][j];
         }
     }
-
-    // Display results
+    
     HD44780_Clear();
     HD44780_SetCursor(0, 0);
     
-    if(type == CABLE_FAULTY) {
-        HD44780_PrintStr("FAULTY CABLE");
-        HD44780_SetCursor(0, 1);
-        for(uint8_t i = 0; i < 8; i++) {
-            if(!wire_map[i]) {
-                char buf[4];
-                sprintf(buf, "%d ", i+1);
-                HD44780_PrintStr(buf);
-            }
+    if (total_connections == 0) {
+        HD44780_PrintStr("NO CABLE");
+        return;
+    }
+    
+    // Check for YOUR crossover pattern: 2<->4 and 7<->8
+    if ((wire_connections[1][3] && wire_connections[3][1]) && 
+        (wire_connections[6][7] && wire_connections[7][6])) {
+        HD44780_PrintStr("CROSSOVER CABLE");
+        return;
+    }
+    
+    // Check for straight cable
+    uint8_t straight_connections = 0;
+    for (uint8_t i = 0; i < 8; i++) {
+        if (wire_connections[i][i] == 1) {
+            straight_connections++;
         }
     }
-    else {
-        HD44780_PrintStr("Type: ");
-        HD44780_PrintStr(cable_type_names[type]);
+    
+    if (straight_connections >= 6) {
+        HD44780_PrintStr("STRAIGHT CABLE");
+        return;
     }
+    
+    HD44780_PrintStr("FAULTY CABLE");
+    show_faulty_pins(wire_connections);
 }
 
+void show_faulty_pins(uint8_t wire_connections[8][8]) {
+    HD44780_SetCursor(0, 1);
+    for (uint8_t i = 0; i < 8; i++) {
+        uint8_t connected = 0;
+        for (uint8_t j = 0; j < 8; j++) {
+            connected |= wire_connections[i][j];
+        }
+        if (!connected) {
+            char buf[4];
+            sprintf(buf, "%d ", i+1);
+            HD44780_PrintStr(buf);
+        }
+    }
+}
 /* USER CODE END 0 */
 
 /**
@@ -403,7 +395,7 @@ else if(!last_button_state && current_button_state) {
         if(HAL_GetTick() - button_press_time > 1000) {
             test_mode = !test_mode;
             HD44780_Clear();
-            HD44780_PrintStr(test_mode ? "TEST MODE" : "RGB MODE");
+            HD44780_PrintStr(test_mode ? "Cable Test Mode" : "RGB MODE");
         }
         // Short press action
         else {
